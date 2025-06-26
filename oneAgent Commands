@@ -1,0 +1,9 @@
+  58  systemctl status oneagent
+   59  systemctl restart oneagent
+   60  systemctl stop oneagent
+   61  systemctl status oneagent
+   62  systemctl start oneagent
+   63  systemctl status oneagent
+   64  systemctl enable oneagent
+   66  systemctl is-enabled oneagent
+   67  history
