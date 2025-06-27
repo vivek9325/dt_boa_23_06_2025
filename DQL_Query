@@ -1,0 +1,78 @@
+
+fetch dt.davis.problems | summarize (countIf(event.status == "ACTIVE"))
+
+fetch logs | summarize total=count(), by:{host.name, status}
+
+timeseries count = sum(dt.service.request.count)
+| fieldsAdd count.single_value = arraySum(count)
+
+
+
+timeseries response_time = avg(dt.service.request.response_time) | fieldsAdd response_time = arrayAvg(response_time)
+
+
+timeseries count = sum(dt.service.request.count),
+filter: ((http.response.status_code >=500 ) AND (http.response.status_code <= 599) )
+| fieldsAdd request_count = arraySum(count)
+
+
+
+timeseries response_time = percentile(dt.service.request.response_time,90)
+| fieldsAdd response_time = arrayPercentile(response_time,90)
+
+
+timeseries usage = avg(dt.process.cpu.usage)
+| fieldsAdd usage.single_value = arrayAvg(usage)
+
+
+
+timeseries mem_usage = avg(dt.process.memory.usage) 
+| fieldsAdd memory_usage = arrayAvg(mem_usage)
+
+
+
+
+fetch dt.entity.host
+| fieldsAdd isMonitoringCandidate
+| filterOut isMonitoringCandidate == true
+| summarize count(), alias:host
+
+
+
+timeseries m1 = sum(dt.host.availability), filter:availability.state == "up", by:{availability.state,dt.entity.host}
+| parse replaceString(toString(m1), "null", "0"), """'['ARRAY{DOUBLE:i ', '}{1,1000}:m1Pop"""
+| fieldsAdd availability = arraySum(m1Pop)/(arraySize(m1Pop)*(toDouble(interval)/60000000000))*100
+| fieldsRemove timeframe
+| summarize avg(availability)
+
+
+timeseries host_uptime = avg(dt.host.uptime)
+| fieldsAdd avg_uptime = arrayAvg(host_uptime)
+| fieldsRemove timeframe
+
+
+fetch dt.entity.host
+| fieldsAdd state
+| filterOut isNull(state)
+| summarize count(), by:{state}
+
+fetch dt.entity.host
+| fieldsAdd monitoringMode = coalesce(monitoringMode, "MONITORING_CANDIDATE")
+| summarize total = count(), by:{monitoringMode, entity.name}
+
+
+timeseries by:{dt.entity.host}, {bytes_rx = sum(dt.host.net.nic.bytes_rx), bytes_tx = sum(dt.host.net.nic.bytes_tx)}
+| fieldsAdd bytes_rx = arraySum(bytes_rx), bytes_tx = arraySum(bytes_tx)
+| fieldsAdd traffic_gb = 1e-9 * (bytes_rx + bytes_tx)
+| summarize max(traffic_gb), alias: traffic_gb
+
+
+timeseries cpu_usage = avg(dt.process.cpu.usage), interval:15m
+| append [timeseries mem_usage = avg(dt.process.memory.usage), interval:15m ]
+
+
+timeseries t_cpu = avg(dt.host.cpu.usage), interval:15m, by:{host.name}
+| fieldsAdd avg_cpu = arrayAvg(t_cpu)
+| sort - avg_cpu
+| limit 10
+
